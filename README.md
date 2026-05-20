@@ -2,8 +2,8 @@
 
 **Course:** SEN3006 - Software Architecture  
 **Semester:** Spring 2026  
-**Team Members:** [İsim 1], [İsim 2], [İsim 3]  
-**Submission Date:** June 8, 2026
+**Team Members:** Tamer Oduncu, Sude Nur Şekerci , Robert Bora Orhan  
+
 
 ---
 
@@ -269,24 +269,6 @@ src/
 └── test/
     └── TestScenarios.java                  # 57 test scenarios
 ```
-
----
-
-## 👥 Team Responsibilities
-
-| Member | Responsibilities |
-|--------|-----------------| 
-| [İsim 1] | Singleton + Observer + Class Diagram |
-| [İsim 2] | Decorator + UI + Sequence Diagram |
-| [İsim 3] | Auction System + Integration + Testing + Report |
-
----
-
-## 📅 Development Timeline
-
-- **Week 1 (May 21-27):** Core patterns implementation
-- **Week 2 (May 28 - June 3):** UI + Auction System + Integration + UML
-- **Week 3 (June 4-8):** Testing + Report + Final submission
 
 ---
 
