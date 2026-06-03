@@ -1,18 +1,22 @@
 package test;
 
-import main.models.Product;
-import main.models.User;
-import main.models.Bid;
+import main.models.*;
+import main.database.*;
+import main.patterns.singleton.AppConfig;
 import main.patterns.singleton.ShoppingCart;
 import main.patterns.decorator.*;
 import main.patterns.observer.*;
+import main.utils.CouponValidator;
 
 /**
- * Test Scenarios for all three design patterns + Auction system.
+ * Test Scenarios for all three design patterns.
  * Demonstrates and verifies correct implementation.
  * 
- * Compile and run from the project root directory.
- * See README.md for detailed instructions.
+ * Test 1: Singleton Pattern — AppConfig (true GoF Singleton)
+ * Test 2: Decorator Pattern (5 types, order matters)
+ * Test 3: Observer Pattern (Stock, PriceNotification, Analytics)
+ * Test 4: Integration Tests
+ * Test 5: Decorator Order Proof (mathematical difference)
  */
 public class TestScenarios {
     private static int passCount = 0;
@@ -20,14 +24,15 @@ public class TestScenarios {
 
     public static void main(String[] args) {
         System.out.println("╔══════════════════════════════════════════════╗");
-        System.out.println("║   E-Commerce System - Test Scenarios         ║");
+        System.out.println("║   E-Commerce System — Test Scenarios         ║");
         System.out.println("╚══════════════════════════════════════════════╝\n");
 
         testSingletonPattern();
         testDecoratorPattern();
         testObserverPattern();
-        testAuctionDemandSystem();
         testIntegration();
+        testDecoratorOrderProof();
+        testDynamicPricing();
 
         System.out.println("\n══════════════════════════════════════════════");
         System.out.println("Sonuçlar: " + passCount + " geçti, " + failCount + " başarısız");
@@ -35,51 +40,93 @@ public class TestScenarios {
     }
 
     // ========================================
-    // TEST 1: SINGLETON PATTERN
+    // TEST 1: SINGLETON PATTERN — AppConfig
     // ========================================
     private static void testSingletonPattern() {
-        System.out.println("─── TEST 1: Singleton Pattern ───");
-        ShoppingCart.resetInstance(); // Clean state
+        System.out.println("─── TEST 1: Singleton Pattern — AppConfig ───");
+        AppConfig.resetInstance();
 
-        // Test 1.1: Same instance
-        ShoppingCart cart1 = ShoppingCart.getInstance();
-        ShoppingCart cart2 = ShoppingCart.getInstance();
-        assertTest("1.1 Aynı instance döner", cart1 == cart2);
+        // Test 1.1: getInstance() her zaman AYNI instance döner
+        AppConfig config1 = AppConfig.getInstance();
+        AppConfig config2 = AppConfig.getInstance();
+        assertTest("1.1 Her zaman AYNI instance (config1 == config2)", config1 == config2);
 
-        // Test 1.2: Cart starts empty
-        assertTest("1.2 Sepet boş başlar", cart1.isEmpty());
-        assertTest("1.2 Item sayısı 0", cart1.getItemCount() == 0);
+        // Test 1.2: Default değerler doğru
+        assertTest("1.2 Default dil: Türkçe", "Türkçe".equals(config1.getLanguage()));
+        assertTest("1.2 Default tema: Dark", "Dark".equals(config1.getTheme()));
+        assertTest("1.2 Default currency: ₺", "₺".equals(config1.getCurrency()));
+        assertTest("1.2 Default kargo: 29.99", config1.getDefaultShippingCost() == 29.99);
+        assertTest("1.2 Default lowStock threshold: 5", config1.getLowStockThreshold() == 5);
 
-        // Test 1.3: Add item
+        // Test 1.3: config1 üzerinden değişiklik → config2'de de görünür
+        config1.setLanguage("English");
+        config1.setTheme("Light");
+        assertTest("1.3 config1 dil: English", "English".equals(config1.getLanguage()));
+        assertTest("1.3 config2 DİL DE AYNI (English)", "English".equals(config2.getLanguage()));
+        assertTest("1.3 config2 TEMA DA AYNI (Light)", "Light".equals(config2.getTheme()));
+
+        // Test 1.4: Singleton tüm sistem genelinde paylaşılır
+        // (Lab manual'deki AppConfig örneğinin aynısı)
+        AppConfig config3 = AppConfig.getInstance();
+        assertTest("1.4 Üçüncü referans da AYNI obje", config1 == config3);
+        assertTest("1.4 config3 de güncel dili görür (English)",
+                "English".equals(config3.getLanguage()));
+
+        // Test 1.5: Ayar değişiklikleri anlık yansır
+        config2.setDefaultShippingCost(19.99);
+        assertTest("1.5 Kargo config1'den okunur: 19.99",
+                config1.getDefaultShippingCost() == 19.99);
+
+        // Test 1.6: formatPrice utility
+        assertTest("1.6 formatPrice doğru", "100.00₺".equals(config1.formatPrice(100.0)));
+        config1.setCurrency("$");
+        assertTest("1.6 Currency değişince format da değişir",
+                "100.00$".equals(config1.formatPrice(100.0)));
+
+        // Test 1.7: notificationsEnabled
+        assertTest("1.7 Bildirimler varsayılan açık", config1.isNotificationsEnabled());
+        config1.setNotificationsEnabled(false);
+        assertTest("1.7 Bildirimler kapatıldı", !config1.isNotificationsEnabled());
+        assertTest("1.7 config2 de kapalı görür", !config2.isNotificationsEnabled());
+
+        // Reset for subsequent tests
+        AppConfig.resetInstance();
+
+        System.out.println();
+
+        // --- ShoppingCart: Per-User Scoped (NOT Singleton) ---
+        System.out.println("─── TEST 1B: ShoppingCart — Per-User Scoped ───");
+        ShoppingCart.resetAllInstances();
+
+        ShoppingCart cart1a = ShoppingCart.getInstance(10);
+        ShoppingCart cart1b = ShoppingCart.getInstance(10);
+        assertTest("1B.1 Aynı buyer aynı sepet döner", cart1a == cart1b);
+
+        ShoppingCart cart2 = ShoppingCart.getInstance(11);
+        assertTest("1B.2 Farklı buyer FARKLI sepet", cart1a != cart2);
+
+        assertTest("1B.3 Sepet boş başlar", cart1a.isEmpty());
+
         Product laptop = new Product(1, "Laptop", "Test laptop", 1000.0, 10, "Elektronik");
         ProductComponent decorated = new ConcreteProduct(laptop);
-        cart1.addItem(decorated, laptop);
-        assertTest("1.3 Ürün eklendi", cart1.getItemCount() == 1);
+        cart1a.addItem(decorated, laptop);
+        assertTest("1B.4 Buyer10 sepetine eklendi", cart1a.getItemCount() == 1);
+        assertTest("1B.5 cart1b de aynı veriyi görür", cart1b.getItemCount() == 1);
+        assertTest("1B.6 Buyer11 sepeti BOŞ (farklı scope)", cart2.isEmpty());
 
-        // Test 1.4: Both references see same data
-        assertTest("1.4 cart2 de aynı veriyi görür", cart2.getItemCount() == 1);
+        ShoppingCart.clearInstance(10);
+        ShoppingCart newCart = ShoppingCart.getInstance(10);
+        assertTest("1B.7 Clear sonrası yeni sepet boş", newCart.isEmpty());
 
-        // Test 1.5: Total calculation
-        assertTest("1.5 Toplam doğru", cart1.getTotal() == 1000.0);
-
-        // Test 1.6: Remove item
-        cart1.removeItem(0);
-        assertTest("1.6 Ürün silindi", cart1.isEmpty());
-
-        // Test 1.7: Clear
-        cart1.addItem(decorated, laptop);
-        cart1.clear();
-        assertTest("1.7 Sepet temizlendi", cart1.isEmpty());
-
-        ShoppingCart.resetInstance();
+        ShoppingCart.resetAllInstances();
         System.out.println();
     }
 
     // ========================================
-    // TEST 2: DECORATOR PATTERN
+    // TEST 2: DECORATOR PATTERN (5 types)
     // ========================================
     private static void testDecoratorPattern() {
-        System.out.println("─── TEST 2: Decorator Pattern ───");
+        System.out.println("─── TEST 2: Decorator Pattern (5 Tür) ───");
 
         Product phone = new Product(2, "Telefon", "Akıllı telefon", 100.0, 5, "Elektronik");
 
@@ -89,45 +136,58 @@ public class TestScenarios {
         assertTest("2.1 Base isim doğru", "Telefon".equals(base.getName()));
         assertTest("2.1 Free shipping yok", !base.hasFreeShipping());
 
-        // Test 2.2: DiscountDecorator (%10)
-        ProductComponent discounted = new DiscountDecorator(base, 10);
-        assertTest("2.2 %10 indirim: 90₺", discounted.getPrice() == 90.0);
+        // Test 2.2: PercentageDiscountDecorator (%10)
+        ProductComponent pctDiscount = new PercentageDiscountDecorator(base, 10);
+        assertTest("2.2 %10 indirim: 90₺", pctDiscount.getPrice() == 90.0);
         assertTest("2.2 Açıklama indirim içerir",
-                discounted.getDescription().contains("%10 indirim"));
+                pctDiscount.getDescription().contains("%10 indirim"));
 
-        // Test 2.3: CouponDecorator (20₺)
-        ProductComponent withCoupon = new CouponDecorator(discounted, 20, "INDIRIM20");
-        assertTest("2.3 Kupon sonrası: 70₺", withCoupon.getPrice() == 70.0);
-        assertTest("2.3 Kupon kodu açıklamada",
-                withCoupon.getDescription().contains("INDIRIM20"));
+        // Test 2.3: FixedAmountDiscountDecorator (20₺)
+        ProductComponent fixedDiscount = new FixedAmountDiscountDecorator(base, 20);
+        assertTest("2.3 20₺ sabit indirim: 80₺", fixedDiscount.getPrice() == 80.0);
+        assertTest("2.3 Açıklama indirim içerir",
+                fixedDiscount.getDescription().contains("-20₺ indirim"));
 
-        // Test 2.4: FreeShippingDecorator
+        // Test 2.4: CouponDecorator (30₺)
+        ProductComponent withCoupon = new CouponDecorator(pctDiscount, 30, "TEST30");
+        assertTest("2.4 Kupon sonrası: 60₺", withCoupon.getPrice() == 60.0);
+        assertTest("2.4 Kupon kodu açıklamada",
+                withCoupon.getDescription().contains("TEST30"));
+
+        // Test 2.5: FreeShippingDecorator
         ProductComponent withShipping = new FreeShippingDecorator(withCoupon);
-        assertTest("2.4 Fiyat değişmedi: 70₺", withShipping.getPrice() == 70.0);
-        assertTest("2.4 Ücretsiz kargo aktif", withShipping.hasFreeShipping());
-        assertTest("2.4 Kargo açıklamada",
+        assertTest("2.5 Fiyat değişmedi: 60₺", withShipping.getPrice() == 60.0);
+        assertTest("2.5 Ücretsiz kargo aktif", withShipping.hasFreeShipping());
+        assertTest("2.5 Kargo maliyeti 0", withShipping.getShippingCost() == 0);
+        assertTest("2.5 Kargo açıklamada",
                 withShipping.getDescription().contains("Ücretsiz Kargo"));
 
-        // Test 2.5: Decorator chain
-        // 100₺ → %10 = 90₺ → -20₺ kupon = 70₺ → free shipping = 70₺
-        System.out.println("  Decorator Zinciri:");
-        System.out.println("    Orijinal:   100.00₺");
-        System.out.println("    %10 indirim: 90.00₺");
-        System.out.println("    Kupon -20₺:  70.00₺");
-        System.out.println("    + Ücretsiz Kargo");
-        assertTest("2.5 Zincir sonucu doğru", withShipping.getPrice() == 70.0);
+        // Test 2.6: FlashSaleDecorator (%10)
+        ProductComponent flashSale = new FlashSaleDecorator(base);
+        assertTest("2.6 Flash sale: 90₺", flashSale.getPrice() == 90.0);
+        assertTest("2.6 Flash açıklamada",
+                flashSale.getDescription().contains("Flash Sale"));
 
-        // Test 2.6: Coupon doesn't go below 0
+        // Test 2.7: Coupon doesn't go below 0
         ProductComponent cheapProduct = new ConcreteProduct(
                 new Product(3, "Ucuz", "Test", 10.0, 1, "Test"));
         ProductComponent bigCoupon = new CouponDecorator(cheapProduct, 50, "BIG");
-        assertTest("2.6 Fiyat 0'ın altına düşmez", bigCoupon.getPrice() == 0);
+        assertTest("2.7 Fiyat 0'ın altına düşmez", bigCoupon.getPrice() == 0);
 
-        // Test 2.7: Multiple discounts stack
-        ProductComponent doubleDiscount = new DiscountDecorator(
-                new DiscountDecorator(base, 10), 20);
+        // Test 2.8: Multiple percentage discounts stack
+        ProductComponent doubleDiscount = new PercentageDiscountDecorator(
+                new PercentageDiscountDecorator(base, 10), 20);
         // 100 * 0.9 * 0.8 = 72
-        assertTest("2.7 Çoklu indirim: 72₺", doubleDiscount.getPrice() == 72.0);
+        assertTest("2.8 Çoklu indirim: 72₺", doubleDiscount.getPrice() == 72.0);
+
+        // Test 2.9: Full decorator chain
+        // 100₺ → %10 = 90₺ → -30₺ kupon = 60₺ → free shipping = 60₺
+        System.out.println("  Decorator Zinciri:");
+        System.out.println("    Orijinal:         100.00₺");
+        System.out.println("    %10 indirim:       90.00₺");
+        System.out.println("    Kupon -30₺:        60.00₺");
+        System.out.println("    + Ücretsiz Kargo");
+        assertTest("2.9 Zincir sonucu doğru", withShipping.getPrice() == 60.0);
 
         System.out.println();
     }
@@ -136,28 +196,29 @@ public class TestScenarios {
     // TEST 3: OBSERVER PATTERN
     // ========================================
     private static void testObserverPattern() {
-        System.out.println("─── TEST 3: Observer Pattern ───");
+        System.out.println("─── TEST 3: Observer Pattern (3 Observer) ───");
 
         StockSubject subject = new StockSubject();
         StockObserver stockObs = new StockObserver();
-        NotificationObserver notifObs = new NotificationObserver();
+        PriceNotificationObserver priceObs = new PriceNotificationObserver();
+        AnalyticsObserver analyticsObs = new AnalyticsObserver();
 
         // Test 3.1: Register observers
         subject.registerObserver(stockObs);
-        subject.registerObserver(notifObs);
+        subject.registerObserver(priceObs);
+        subject.registerObserver(analyticsObs);
         assertTest("3.1 Observer'lar kaydedildi", true);
 
         // Test 3.2: Initialize stock (no notification)
         subject.initializeStock("Laptop", 10);
         assertTest("3.2 Stok başlatıldı", subject.getStock("Laptop") == 10);
-        assertTest("3.2 Bildirim yok (init)", stockObs.getStockLog().isEmpty());
+        assertTest("3.2 StockObserver bildirim yok (init)", stockObs.getStockLog().isEmpty());
 
-        // Test 3.3: Stock decrease triggers notification
+        // Test 3.3: Stock decrease triggers all observers
         subject.decreaseStock("Laptop", 1);
         assertTest("3.3 Stok azaldı: 9", subject.getStock("Laptop") == 9);
         assertTest("3.3 StockObserver bildirim aldı", !stockObs.getStockLog().isEmpty());
-        assertTest("3.3 NotificationObserver bildirim aldı",
-                !notifObs.getNotifications().isEmpty());
+        assertTest("3.3 AnalyticsObserver bildirim aldı", analyticsObs.getTotalEventCount() > 0);
 
         // Test 3.4: Low stock warning
         subject.setStock("Laptop", 3);
@@ -169,188 +230,173 @@ public class TestScenarios {
         lastLog = stockObs.getLastLog();
         assertTest("3.5 Stok tükendi uyarısı", lastLog.contains("STOK TÜKENDI"));
 
-        // Test 3.6: Stock increase
-        subject.increaseStock("Laptop", 5);
-        assertTest("3.6 Stok arttı: 5", subject.getStock("Laptop") == 5);
+        // Test 3.6: Price change notification
+        subject.initializePrice("Laptop", 10000.0);
+        subject.setPrice("Laptop", 8500.0);
+        assertTest("3.6 PriceNotification bildirim aldı", !priceObs.getNotifications().isEmpty());
+        assertTest("3.6 Analytics fiyat kaydı",
+                analyticsObs.getEntriesByType("PRICE_CHANGED").size() > 0);
 
-        // Test 3.7: Remove observer
+        // Test 3.7: Discount notification
+        subject.notifyDiscountAdded("Laptop", "%15 indirim");
+        assertTest("3.7 İndirim bildirimi alındı",
+                analyticsObs.getEntriesByType("DISCOUNT_ADDED").size() > 0);
+
+        // Test 3.8: Remove observer
         int logSizeBefore = stockObs.getStockLog().size();
         subject.removeObserver(stockObs);
         subject.setStock("Laptop", 20);
-        assertTest("3.7 Çıkarılan observer bildirim almaz",
+        assertTest("3.8 Çıkarılan observer bildirim almaz",
                 stockObs.getStockLog().size() == logSizeBefore);
 
-        System.out.println();
-    }
-
-    // ========================================
-    // TEST 4: AUCTION / DEMAND SYSTEM
-    // ========================================
-    private static void testAuctionDemandSystem() {
-        System.out.println("─── TEST 4: Müzayede & Talep Sistemi (Observer Pattern) ───");
-
-        StockSubject stockSubject = new StockSubject();
-        DemandTracker demandTracker = new DemandTracker(stockSubject);
-        AuctionEventObserver auctionObs = new AuctionEventObserver();
-        demandTracker.registerAuctionObserver(auctionObs);
-
-        // Setup product
-        String productName = "Test Laptop";
-        stockSubject.initializeStock(productName, 3); // Low stock!
-        demandTracker.initializeProduct(productName, 1000.0);
-
-        // Test 4.1: Initial state
-        assertTest("4.1 Başlangıç talep 0", demandTracker.getDemandCount(productName) == 0);
-        assertTest("4.1 Başlangıç fiyat 1000₺", demandTracker.getCurrentPrice(productName) == 1000.0);
-        assertTest("4.1 Müzayede kapalı", !demandTracker.isAuctionActive(productName));
-
-        // Test 4.2: Record demand - price should not change much with few clicks
-        demandTracker.recordDemand(productName);
-        demandTracker.recordDemand(productName);
-        assertTest("4.2 Talep sayısı 2", demandTracker.getDemandCount(productName) == 2);
-        assertTest("4.2 Müzayede henüz kapalı (eşik altı)", !demandTracker.isAuctionActive(productName));
-
-        // Test 4.3: Pass the demand threshold (5) → auction activates
-        demandTracker.recordDemand(productName); // 3
-        demandTracker.recordDemand(productName); // 4
-        demandTracker.recordDemand(productName); // 5 → threshold!
-        assertTest("4.3 Talep sayısı 5", demandTracker.getDemandCount(productName) == 5);
-        assertTest("4.3 Müzayede aktif (eşik aşıldı)", demandTracker.isAuctionActive(productName));
-
-        // Test 4.4: Price should have increased (high demand + low stock)
-        // demand=5, stock=3: demandRatio=5/5=1.0, scarcityRatio=1/4=0.25
-        // multiplier = 1 + (1.0 * 0.25 * 0.5) = 1.125
-        // newPrice = 1000 * 1.125 = 1125.0
-        double currentPrice = demandTracker.getCurrentPrice(productName);
-        assertTest("4.4 Fiyat arttı (talep + düşük stok)", currentPrice > 1000.0);
-        System.out.println("    Mevcut fiyat: " + String.format("%.2f₺", currentPrice));
-
-        // Test 4.5: More demand → higher price
-        for (int i = 0; i < 10; i++) {
-            demandTracker.recordDemand(productName);
-        }
-        double higherPrice = demandTracker.getCurrentPrice(productName);
-        assertTest("4.5 Daha fazla talep = daha yüksek fiyat", higherPrice > currentPrice);
-        System.out.println("    15 tıklama sonrası fiyat: " + String.format("%.2f₺", higherPrice));
-
-        // Test 4.6: Demand level labels
-        String level = demandTracker.getDemandLevel(productName);
-        assertTest("4.6 Talep seviyesi: " + level,
-                level.contains("Yüksek") || level.contains("Çok Yüksek"));
-
-        // Test 4.7: Price multiplier
-        double multiplier = demandTracker.getPriceMultiplier(productName);
-        assertTest("4.7 Çarpan > 1.0", multiplier > 1.0);
-        System.out.println("    Fiyat çarpanı: " + String.format("%.2fx", multiplier));
-
-        // Test 4.8: Lower stock → even higher price
-        double priceBeforeStockDrop = demandTracker.getCurrentPrice(productName);
-        stockSubject.setStock(productName, 1); // Only 1 left!
-        demandTracker.recalculatePrice(productName);
-        double priceAfterStockDrop = demandTracker.getCurrentPrice(productName);
-        assertTest("4.8 Stok düştüğünde fiyat artar", priceAfterStockDrop > priceBeforeStockDrop);
-        System.out.println("    Stok 1'e düştüğünde fiyat: " + String.format("%.2f₺", priceAfterStockDrop));
-
-        // Test 4.9: Place bids
-        User user1 = new User(1, "Ahmet", "ahmet@test.com");
-        User user2 = new User(2, "Elif", "elif@test.com");
-
-        double minBid = priceAfterStockDrop + 1;
-        Bid bid1 = demandTracker.placeBid(productName, user1, minBid + 100);
-        assertTest("4.9 İlk teklif kabul edildi", bid1 != null);
-        assertTest("4.9 Teklif sayısı 1", demandTracker.getTotalBidCount(productName) == 1);
-
-        // Test 4.10: Higher bid
-        Bid bid2 = demandTracker.placeBid(productName, user2, minBid + 200);
-        assertTest("4.10 Daha yüksek teklif kabul edildi", bid2 != null);
-        assertTest("4.10 En yüksek teklif Elif'in", 
-                demandTracker.getHighestBid(productName).getUser().getName().equals("Elif"));
-
-        // Test 4.11: Lower bid rejected
-        Bid lowBid = demandTracker.placeBid(productName, user1, minBid);
-        assertTest("4.11 Düşük teklif reddedildi", lowBid == null);
-
-        // Test 4.12: AuctionEventObserver received events
-        assertTest("4.12 Auction observer olayları aldı", !auctionObs.getEventLog().isEmpty());
-        System.out.println("    Toplam olay sayısı: " + auctionObs.getEventLog().size());
-
-        // Test 4.13: Max multiplier cap (3.0x)
-        for (int i = 0; i < 50; i++) {
-            demandTracker.recordDemand(productName);
-        }
-        double cappedMultiplier = demandTracker.getPriceMultiplier(productName);
-        // Note: bids may have pushed price above max multiplier
-        // But demand-only multiplier should be capped
-        System.out.println("    Çok yüksek talep sonrası çarpan: " + String.format("%.2fx", cappedMultiplier));
+        // Test 3.9: Stock increase
+        subject.increaseStock("Laptop", 5);
+        assertTest("3.9 Stok arttı: 25", subject.getStock("Laptop") == 25);
 
         System.out.println();
     }
 
     // ========================================
-    // TEST 5: INTEGRATION
+    // TEST 4: INTEGRATION
     // ========================================
     private static void testIntegration() {
-        System.out.println("─── TEST 5: Entegrasyon Testleri ───");
-        ShoppingCart.resetInstance();
+        System.out.println("─── TEST 4: Entegrasyon Testleri ───");
+        ShoppingCart.resetAllInstances();
 
         StockSubject subject = new StockSubject();
         StockObserver stockObs = new StockObserver();
         subject.registerObserver(stockObs);
 
-        DemandTracker demandTracker = new DemandTracker(subject);
-        AuctionEventObserver auctionObs = new AuctionEventObserver();
-        demandTracker.registerAuctionObserver(auctionObs);
-
         Product product = new Product(10, "Test Ürün", "Entegrasyon testi", 200.0, 10, "Test");
         subject.initializeStock(product.getName(), product.getStock());
-        demandTracker.initializeProduct(product.getName(), product.getPrice());
 
-        ShoppingCart cart = ShoppingCart.getInstance();
-
-        // Test 5.1: Add to cart + decrease stock
+        // Test 4.1: Add to cart (Buyer 10) + decrease stock
+        ShoppingCart cart = ShoppingCart.getInstance(10);
         ProductComponent comp = new ConcreteProduct(product);
         cart.addItem(comp, product);
         subject.decreaseStock(product.getName(), 1);
-        assertTest("5.1 Sepet + Stok uyumlu",
+        assertTest("4.1 Sepet + Stok uyumlu",
                 cart.getItemCount() == 1 && subject.getStock("Test Ürün") == 9);
 
-        // Test 5.2: Apply decorator chain and check cart total
-        ProductComponent decorated = new DiscountDecorator(comp, 10); // 200 * 0.9 = 180
+        // Test 4.2: Apply decorator chain and check cart total
+        ProductComponent decorated = new PercentageDiscountDecorator(comp, 10); // 200 * 0.9 = 180
         decorated = new CouponDecorator(decorated, 30, "TEST30");     // 180 - 30 = 150
         decorated = new FreeShippingDecorator(decorated);
 
         cart.clear();
         cart.addItem(decorated, product, 2);
-        assertTest("5.2 Decorator zinciri toplam: 300₺", cart.getTotal() == 300.0);
-        assertTest("5.2 Kargo ücretsiz", cart.getShippingCost() == 0);
-        assertTest("5.2 Grand total: 300₺", cart.getGrandTotal() == 300.0);
+        assertTest("4.2 Decorator zinciri toplam: 300₺", cart.getTotal() == 300.0);
+        assertTest("4.2 Kargo ücretsiz", cart.getShippingCost() == 0);
+        assertTest("4.2 Grand total: 300₺", cart.getGrandTotal() == 300.0);
 
-        // Test 5.3: User model
-        User user = new User(1, "Test User", "test@test.com");
-        assertTest("5.3 User oluşturuldu", "Test User".equals(user.getName()));
+        // Test 4.3: Different buyers have separate carts
+        ShoppingCart cart2 = ShoppingCart.getInstance(11);
+        assertTest("4.3 Buyer11 sepeti boş", cart2.isEmpty());
+        assertTest("4.3 Buyer10 sepeti dolu", !cart.isEmpty());
 
-        // Test 5.4: Demand affects price → cart reflects dynamic price
-        cart.clear();
-        // Simulate high demand on low stock product
-        Product limitedProduct = new Product(20, "Limited Ürün", "Sınırlı stok", 500.0, 2, "Test");
-        subject.initializeStock(limitedProduct.getName(), 2);
-        demandTracker.initializeProduct(limitedProduct.getName(), 500.0);
+        // Test 4.4: User model
+        Seller seller = new Seller(1, "TestSeller", "test@seller.com", "123", "TestStore");
+        assertTest("4.4 Seller oluşturuldu", "TestSeller".equals(seller.getName()));
+        assertTest("4.4 Seller role doğru", seller.getRole() == main.models.User.Role.SELLER);
 
-        // Generate demand
-        for (int i = 0; i < 10; i++) {
-            demandTracker.recordDemand(limitedProduct.getName());
-        }
+        Buyer buyer = new Buyer(10, "TestBuyer", "test@buyer.com", "123");
+        assertTest("4.4 Buyer oluşturuldu", "TestBuyer".equals(buyer.getName()));
+        assertTest("4.4 Buyer role doğru", buyer.getRole() == main.models.User.Role.BUYER);
 
-        double dynamicPrice = demandTracker.getCurrentPrice(limitedProduct.getName());
-        assertTest("5.4 Dinamik fiyat > baz fiyat", dynamicPrice > 500.0);
-        System.out.println("    Limited ürün dinamik fiyat: " + String.format("%.2f₺", dynamicPrice));
+        // Test 4.5: CouponValidator
+        CouponValidator.CouponInfo coupon = CouponValidator.validate("WELCOME10");
+        assertTest("4.5 WELCOME10 kupon geçerli", coupon != null);
+        assertTest("4.5 Kupon type PERCENTAGE",
+                coupon != null && coupon.getType() == CouponValidator.CouponType.PERCENTAGE);
 
-        // Test 5.5: Bid model
-        Bid bid = new Bid(1, user, limitedProduct, dynamicPrice + 100);
-        assertTest("5.5 Bid oluşturuldu", bid.getAmount() == dynamicPrice + 100);
-        assertTest("5.5 Bid kullanıcısı doğru", "Test User".equals(bid.getUser().getName()));
+        CouponValidator.CouponInfo invalid = CouponValidator.validate("INVALID");
+        assertTest("4.5 Geçersiz kupon null", invalid == null);
 
-        ShoppingCart.resetInstance();
+        ShoppingCart.resetAllInstances();
+        System.out.println();
+    }
+
+    // ========================================
+    // TEST 5: DECORATOR ORDER PROOF
+    // ========================================
+    private static void testDecoratorOrderProof() {
+        System.out.println("─── TEST 5: Decorator Sırası Kanıtı ───");
+
+        Product laptop = new Product(1, "Laptop", "Test", 10000.0, 10, "Elektronik");
+        ProductComponent base = new ConcreteProduct(laptop);
+
+        // Order 1: %15 → 500₺
+        ProductComponent order1 = new PercentageDiscountDecorator(base, 15);  // 10000 * 0.85 = 8500
+        order1 = new FixedAmountDiscountDecorator(order1, 500);               // 8500 - 500 = 8000
+        double price1 = order1.getPrice();
+
+        // Order 2: 500₺ → %15
+        ProductComponent order2 = new FixedAmountDiscountDecorator(base, 500); // 10000 - 500 = 9500
+        order2 = new PercentageDiscountDecorator(order2, 15);                  // 9500 * 0.85 = 8075
+        double price2 = order2.getPrice();
+
+        System.out.println("  Laptop: 10000₺");
+        System.out.println("  Sıra 1 (%15 → 500₺): " + String.format("%.2f₺", price1));
+        System.out.println("  Sıra 2 (500₺ → %15): " + String.format("%.2f₺", price2));
+        System.out.println("  Fark: " + String.format("%.2f₺", Math.abs(price1 - price2)));
+
+        assertTest("5.1 Sıra 1: %15 → 500₺ = 8000₺", price1 == 8000.0);
+        assertTest("5.2 Sıra 2: 500₺ → %15 = 8075₺", price2 == 8075.0);
+        assertTest("5.3 Decorator sırası MATEMATİKSEL FARK oluşturur", price1 != price2);
+        assertTest("5.4 Fark = 75₺", Math.abs(price1 - price2) == 75.0);
+
+        // More complex chain
+        // 10000 → %15 → -500₺ → Flash(%10) → Free Shipping
+        ProductComponent complex = new PercentageDiscountDecorator(base, 15);      // 8500
+        complex = new FixedAmountDiscountDecorator(complex, 500);                   // 8000
+        complex = new FlashSaleDecorator(complex);                                  // 8000 * 0.9 = 7200
+        complex = new FreeShippingDecorator(complex);                               // 7200 + ücretsiz kargo
+
+        System.out.println("\n  Kompleks Zincir:");
+        System.out.println("    10000₺ → %15 = 8500₺");
+        System.out.println("    8500₺ → -500₺ = 8000₺");
+        System.out.println("    8000₺ → Flash %10 = 7200₺");
+        System.out.println("    + Ücretsiz Kargo");
+        System.out.println("    Final: " + String.format("%.2f₺", complex.getPrice()));
+
+        assertTest("5.5 Kompleks zincir: 7200₺", complex.getPrice() == 7200.0);
+        assertTest("5.6 Ücretsiz kargo aktif", complex.hasFreeShipping());
+        assertTest("5.7 Kargo maliyeti 0", complex.getShippingCost() == 0);
+
+        System.out.println();
+    }
+
+    // ========================================
+    // TEST 6: DYNAMIC PRICING (ARZ-TALEP)
+    // ========================================
+    private static void testDynamicPricing() {
+        System.out.println("─── TEST 6: Dinamik Fiyatlandırma (Arz-Talep) ───");
+        
+        main.patterns.observer.DemandPricingObserver.resetAll();
+        main.patterns.observer.StockSubject subject = new main.patterns.observer.StockSubject();
+        main.patterns.observer.DemandPricingObserver observer = new main.patterns.observer.DemandPricingObserver();
+        subject.registerObserver(observer);
+        
+        Product product = new Product(99, "Dinamik Ürün", "Arz-Talep Testi", 1000.0, 30, "Test");
+        subject.initializeStock(product.getName(), product.getStock());
+        
+        main.patterns.decorator.ProductComponent base = new main.patterns.decorator.ConcreteProduct(product);
+        main.patterns.decorator.DynamicPricingDecorator dynamicProduct = new main.patterns.decorator.DynamicPricingDecorator(base, product.getName());
+        
+        // Test 6.1: Overstock (Stock = 30 >= 20) -> -10% -> 900.0
+        subject.decreaseStock(product.getName(), 1); // Trigger event
+        assertTest("6.1 Stok 29 -> %10 İndirim (900₺)", dynamicProduct.getPrice() == 900.0);
+        assertTest("6.2 Açıklamada Stok Fazlası etiketi var", dynamicProduct.getDescription().contains("Stok Fazlası"));
+        
+        // Test 6.3: Normal Stock (Stock = 15) -> 1000.0
+        subject.decreaseStock(product.getName(), 14); // 29 - 14 = 15
+        assertTest("6.3 Stok 15 -> Normal Fiyat (1000₺)", dynamicProduct.getPrice() == 1000.0);
+        
+        // Test 6.4: Low Stock / High Demand (Stock = 5) -> +20% -> 1200.0
+        subject.decreaseStock(product.getName(), 10); // 15 - 10 = 5
+        assertTest("6.4 Stok 5 (Yüksek Talep) -> +%20 Fiyat (1200₺)", dynamicProduct.getPrice() == 1200.0);
+        assertTest("6.5 Açıklamada Yüksek Talep etiketi var", dynamicProduct.getDescription().contains("Yüksek Talep"));
+        
         System.out.println();
     }
 

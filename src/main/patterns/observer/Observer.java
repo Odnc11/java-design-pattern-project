@@ -4,15 +4,18 @@ package main.patterns.observer;
  * Observer Interface - Observer Design Pattern (Behavioral)
  * 
  * Defines the contract for objects that should be notified
- * when the Subject's state changes. Follows the Interface
- * Segregation Principle (ISP) by keeping the interface minimal.
+ * when the Subject's state changes.
+ * 
+ * Generalized to support multiple event types (stock, price, discount).
+ * 
+ * SOLID: Interface Segregation Principle - minimal, focused interface.
  */
 public interface Observer {
     /**
-     * Called by the Subject when stock changes occur.
-     * @param productName Name of the product whose stock changed
-     * @param oldStock    Previous stock level
-     * @param newStock    New stock level
+     * Called by the Subject when state changes occur.
+     * @param eventType   Type of event (e.g., "STOCK_CHANGED", "PRICE_CHANGED", "DISCOUNT_ADDED")
+     * @param productName Name of the affected product
+     * @param data        Event-specific data (old/new values, etc.)
      */
-    void update(String productName, int oldStock, int newStock);
+    void update(String eventType, String productName, Object data);
 }
