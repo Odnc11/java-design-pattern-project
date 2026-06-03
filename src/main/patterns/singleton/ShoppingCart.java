@@ -1,63 +1,40 @@
 package main.patterns.singleton;
 
+import main.models.CartItem;
 import main.patterns.decorator.ProductComponent;
-import main.patterns.decorator.ConcreteProduct;
 import main.models.Product;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Singleton Pattern (Creational) - Shopping Cart
+ * Per-User Scoped Shopping Cart
  * 
- * Guarantees a single shopping cart instance per application session.
- * Uses thread-safe lazy initialization with synchronized access.
+ * NOT a GoF Singleton Pattern! Bu sınıf per-user scoped'dır:
+ * Her buyer kendi ayrı cart instance'ına sahiptir.
+ * Gerçek Singleton için bkz: AppConfig.java
  * 
- * Why Singleton?
- * - Prevents cart data inconsistency across different parts of the app
- * - Ensures all UI components reference the same cart state
- * - Single point of access for cart operations
+ * Session-scoped object: her buyer oturumu için bir instance.
+ * getInstance(buyerId) ile factory-like erişim sağlanır.
+ * 
+ * - Each buyer maintains a single cart throughout their session
+ * - Different buyers have completely separate carts
+ * - All UI components for a given buyer reference the same cart state
+ * - Logout clears the buyer's cart instance
  * 
  * SOLID Principles:
  * - SRP: Only responsible for cart item management
  * - OCP: Works with any ProductComponent (decorated or not)
  */
 public class ShoppingCart {
-    // Volatile ensures visibility across threads
-    private static volatile ShoppingCart instance;
+    /** Per-user cart instances: buyerId → ShoppingCart */
+    private static final Map<Integer, ShoppingCart> instances = new ConcurrentHashMap<>();
 
     private final List<CartItem> items;
     private final List<CartChangeListener> listeners;
-
-    /**
-     * Represents an item in the shopping cart with quantity tracking.
-     */
-    public static class CartItem {
-        private final ProductComponent product;
-        private final Product originalProduct;
-        private int quantity;
-
-        public CartItem(ProductComponent product, Product originalProduct, int quantity) {
-            this.product = product;
-            this.originalProduct = originalProduct;
-            this.quantity = quantity;
-        }
-
-        public ProductComponent getProduct() { return product; }
-        public Product getOriginalProduct() { return originalProduct; }
-        public int getQuantity() { return quantity; }
-        public void setQuantity(int quantity) { this.quantity = quantity; }
-
-        public double getSubtotal() {
-            return product.getPrice() * quantity;
-        }
-
-        @Override
-        public String toString() {
-            return String.format("%s x%d = %.2f₺", product.getName(), quantity, getSubtotal());
-        }
-    }
 
     /**
      * Listener interface for cart state changes (used by UI).
@@ -73,25 +50,40 @@ public class ShoppingCart {
     }
 
     /**
-     * Returns the single instance of ShoppingCart.
-     * Uses double-checked locking for thread safety.
+     * Returns the shopping cart instance for a specific buyer.
+     * Creates a new instance if one doesn't exist for this buyer.
+     * 
+     * @param buyerId The buyer's unique ID
+     * @return The buyer's ShoppingCart instance
      */
-    public static ShoppingCart getInstance() {
-        if (instance == null) {
-            synchronized (ShoppingCart.class) {
-                if (instance == null) {
-                    instance = new ShoppingCart();
-                }
-            }
-        }
-        return instance;
+    public static ShoppingCart getInstance(int buyerId) {
+        return instances.computeIfAbsent(buyerId, id -> new ShoppingCart());
     }
 
     /**
-     * Reset the singleton instance (for testing purposes only).
+     * Clear a buyer's cart instance (called on logout).
      */
-    public static synchronized void resetInstance() {
-        instance = null;
+    public static void clearInstance(int buyerId) {
+        ShoppingCart cart = instances.remove(buyerId);
+        if (cart != null) {
+            cart.items.clear();
+            cart.listeners.clear();
+        }
+    }
+
+    /**
+     * Reset all instances (for testing purposes only).
+     */
+    public static synchronized void resetAllInstances() {
+        instances.clear();
+    }
+
+    /**
+     * Check if two buyer IDs share the same cart instance (they shouldn't).
+     * Useful for demonstrating Singleton per-user in tests.
+     */
+    public static boolean isSameInstance(int buyerId1, int buyerId2) {
+        return instances.get(buyerId1) == instances.get(buyerId2);
     }
 
     // --- Cart Operations ---
@@ -99,14 +91,14 @@ public class ShoppingCart {
     /**
      * Add a product to the cart. If product already exists, increases quantity.
      */
-    public void addItem(ProductComponent product, Product originalProduct) {
-        addItem(product, originalProduct, 1);
+    public synchronized void addItem(ProductComponent decoratedProduct, Product originalProduct) {
+        addItem(decoratedProduct, originalProduct, 1);
     }
 
     /**
      * Add a product with specific quantity to the cart.
      */
-    public void addItem(ProductComponent product, Product originalProduct, int quantity) {
+    public synchronized void addItem(ProductComponent decoratedProduct, Product originalProduct, int quantity) {
         // Check if product already in cart (by original product ID)
         for (CartItem item : items) {
             if (item.getOriginalProduct().equals(originalProduct)) {
@@ -115,14 +107,14 @@ public class ShoppingCart {
                 return;
             }
         }
-        items.add(new CartItem(product, originalProduct, quantity));
+        items.add(new CartItem(decoratedProduct, originalProduct, quantity));
         notifyListeners();
     }
 
     /**
      * Remove an item from the cart by index.
      */
-    public void removeItem(int index) {
+    public synchronized void removeItem(int index) {
         if (index >= 0 && index < items.size()) {
             items.remove(index);
             notifyListeners();
@@ -132,7 +124,7 @@ public class ShoppingCart {
     /**
      * Remove a specific product from the cart.
      */
-    public void removeProduct(Product product) {
+    public synchronized void removeProduct(Product product) {
         items.removeIf(item -> item.getOriginalProduct().equals(product));
         notifyListeners();
     }
@@ -140,13 +132,23 @@ public class ShoppingCart {
     /**
      * Update quantity of an item. Removes item if quantity <= 0.
      */
-    public void updateQuantity(int index, int newQuantity) {
+    public synchronized void updateQuantity(int index, int newQuantity) {
         if (index >= 0 && index < items.size()) {
             if (newQuantity <= 0) {
                 items.remove(index);
             } else {
                 items.get(index).setQuantity(newQuantity);
             }
+            notifyListeners();
+        }
+    }
+
+    /**
+     * Update the decorated product for a cart item (when buyer applies coupon/discount).
+     */
+    public synchronized void updateDecoratedProduct(int index, ProductComponent newDecorated) {
+        if (index >= 0 && index < items.size()) {
+            items.get(index).setDecoratedProduct(newDecorated);
             notifyListeners();
         }
     }
@@ -163,15 +165,26 @@ public class ShoppingCart {
     }
 
     /**
-     * Calculate shipping cost. Free if any item has free shipping.
+     * Calculate shipping cost. Free if any item has free shipping, 
+     * or if the cart total exceeds the buyer's personal free shipping threshold.
      */
     public double getShippingCost() {
         for (CartItem item : items) {
-            if (item.getProduct().hasFreeShipping()) {
-                return 0;
+            if (item.getDecoratedProduct().hasFreeShipping()) {
+                return 0; // Explicitly free via decorator
             }
         }
-        return items.isEmpty() ? 0 : 29.99; // Standard shipping
+        if (items.isEmpty()) return 0;
+        
+        main.models.Buyer buyer = main.utils.SessionManager.getCurrentBuyer();
+        if (buyer != null) {
+            double threshold = buyer.getFreeShippingThreshold();
+            if (getTotal() >= threshold) {
+                return 0; // Free due to cart total exceeding threshold
+            }
+        }
+        
+        return AppConfig.getInstance().getDefaultShippingCost();
     }
 
     /**
@@ -179,6 +192,19 @@ public class ShoppingCart {
      */
     public double getGrandTotal() {
         return getTotal() + getShippingCost();
+    }
+
+    /**
+     * Get the total quantity of a specific product currently in the cart.
+     */
+    public synchronized int getQuantity(Product product) {
+        int count = 0;
+        for (CartItem item : items) {
+            if (item.getOriginalProduct().equals(product)) {
+                count += item.getQuantity();
+            }
+        }
+        return count;
     }
 
     public List<CartItem> getItems() {
@@ -200,7 +226,7 @@ public class ShoppingCart {
     /**
      * Clear all items from the cart.
      */
-    public void clear() {
+    public synchronized void clear() {
         items.clear();
         notifyListeners();
     }

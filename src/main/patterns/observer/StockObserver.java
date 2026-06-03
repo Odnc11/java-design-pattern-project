@@ -2,15 +2,18 @@ package main.patterns.observer;
 
 import java.util.ArrayList;
 import java.util.List;
+import main.patterns.singleton.AppConfig;
 
 /**
  * Concrete Observer - Stock Monitor
  * 
  * Monitors stock levels and logs all changes.
  * Generates warnings for low-stock and out-of-stock situations.
+ * Only handles STOCK_CHANGED events.
+ * 
+ * Uses AppConfig (Singleton) to read lowStockThreshold setting.
  */
 public class StockObserver implements Observer {
-    private static final int LOW_STOCK_THRESHOLD = 5;
     private final List<String> stockLog;
 
     public StockObserver() {
@@ -18,12 +21,22 @@ public class StockObserver implements Observer {
     }
 
     @Override
-    public void update(String productName, int oldStock, int newStock) {
+    public void update(String eventType, String productName, Object data) {
+        if (!"STOCK_CHANGED".equals(eventType)) return;
+        if (!(data instanceof int[])) return;
+
+        int[] stockData = (int[]) data;
+        int oldStock = stockData[0];
+        int newStock = stockData[1];
+
+        // Threshold değerini Singleton AppConfig'den oku
+        int threshold = AppConfig.getInstance().getLowStockThreshold();
+
         String logEntry;
 
         if (newStock == 0) {
             logEntry = "⚠️ STOK TÜKENDI: " + productName + " (Önceki: " + oldStock + ")";
-        } else if (newStock <= LOW_STOCK_THRESHOLD) {
+        } else if (newStock <= threshold) {
             logEntry = "⚡ DÜŞÜK STOK: " + productName + " - Kalan: " + newStock + " adet";
         } else if (newStock > oldStock) {
             logEntry = "📦 STOK GÜNCELLENDİ: " + productName + " (" + oldStock + " → " + newStock + ")";

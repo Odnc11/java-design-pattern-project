@@ -31,4 +31,9 @@ public interface ProductComponent {
      * @return true if free shipping is applied via decorator
      */
     boolean hasFreeShipping();
+
+    /**
+     * @return Shipping cost (0 if free shipping, otherwise default)
+     */
+    double getShippingCost();
 }

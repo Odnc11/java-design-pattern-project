@@ -4,16 +4,20 @@ package main.patterns.decorator;
  * Concrete Decorator - Percentage Discount
  * 
  * Applies a percentage-based discount to the product price.
- * Example: 10% discount on a 100₺ product → 90₺
+ * Example: 15% discount on a 10000₺ product → 8500₺
+ * 
+ * DECORATOR ORDER MATTERS:
+ *   %15 then 500₺ fixed: 10000 * 0.85 = 8500 - 500 = 8000₺
+ *   500₺ fixed then %15: (10000 - 500) = 9500 * 0.85 = 8075₺
  */
-public class DiscountDecorator extends ProductDecorator {
+public class PercentageDiscountDecorator extends ProductDecorator {
     private final double discountPercentage;
 
     /**
      * @param product            The product to decorate
-     * @param discountPercentage Discount percentage (e.g., 10 for 10%)
+     * @param discountPercentage Discount percentage (e.g., 15 for 15%)
      */
-    public DiscountDecorator(ProductComponent product, double discountPercentage) {
+    public PercentageDiscountDecorator(ProductComponent product, double discountPercentage) {
         super(product);
         if (discountPercentage < 0 || discountPercentage > 100) {
             throw new IllegalArgumentException("Discount percentage must be between 0 and 100");

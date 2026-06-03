@@ -5,7 +5,10 @@ package main.patterns.observer;
  * 
  * Defines the contract for observable objects that maintain
  * a list of observers and notify them of state changes.
- * Follows Dependency Inversion Principle (DIP) - depends on Observer abstraction.
+ * 
+ * Generalized to support multiple event types.
+ * 
+ * SOLID: Dependency Inversion Principle - depends on Observer abstraction.
  */
 public interface Subject {
     /**
@@ -21,10 +24,10 @@ public interface Subject {
     void removeObserver(Observer observer);
 
     /**
-     * Notify all registered observers of a stock change.
-     * @param productName Name of the product
-     * @param oldStock    Previous stock level
-     * @param newStock    New stock level
+     * Notify all registered observers of a state change.
+     * @param eventType   Type of event (e.g., "STOCK_CHANGED", "PRICE_CHANGED")
+     * @param productName Name of the affected product
+     * @param data        Event-specific data
      */
-    void notifyObservers(String productName, int oldStock, int newStock);
+    void notifyObservers(String eventType, String productName, Object data);
 }

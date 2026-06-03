@@ -4,8 +4,10 @@ package main.patterns.decorator;
  * Concrete Decorator - Coupon Discount
  * 
  * Applies a fixed-amount coupon discount to the product price.
- * Example: 20₺ coupon on a 100₺ product → 80₺
+ * Example: CODE15 coupon (100₺) on an 8500₺ product → 8400₺
  * Price cannot go below 0.
+ * 
+ * Typically applied by BUYERS in their shopping cart (per-user).
  */
 public class CouponDecorator extends ProductDecorator {
     private final double couponAmount;

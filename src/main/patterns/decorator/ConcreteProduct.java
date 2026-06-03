@@ -38,6 +38,11 @@ public class ConcreteProduct implements ProductComponent {
         return false; // Default: no free shipping
     }
 
+    @Override
+    public double getShippingCost() {
+        return product.getShippingCost();
+    }
+
     /**
      * @return The underlying Product model object
      */

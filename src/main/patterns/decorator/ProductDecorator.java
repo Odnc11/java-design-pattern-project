@@ -42,6 +42,11 @@ public abstract class ProductDecorator implements ProductComponent {
         return wrappedProduct.hasFreeShipping();
     }
 
+    @Override
+    public double getShippingCost() {
+        return wrappedProduct.getShippingCost();
+    }
+
     /**
      * @return The wrapped ProductComponent
      */
