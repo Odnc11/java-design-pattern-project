@@ -39,3 +39,6 @@ Thumbs.db
 *.bak
 *.swp
 *~
+
+# Task files
+tasks/
