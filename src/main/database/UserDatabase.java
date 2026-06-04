@@ -28,7 +28,7 @@ public class UserDatabase {
 
     private static void initializeMockData() {
         // --- 1 Store Admin (Instead of multiple marketplace sellers) ---
-        sellers.add(new Seller(1, "Mağaza Yöneticisi", "admin@test.com", "123", "Vatan Bilgisayar"));
+        sellers.add(new Seller(1, "Mağaza Yöneticisi", "admin@test.com", "123", "TeknoMağaza"));
 
         // --- 6 Mock Buyers (with varying free shipping thresholds) ---
         buyers.add(new Buyer(10, "Ahmet", "ahmet@test.com", "123", 10000.0)); // 10,000₺ threshold
